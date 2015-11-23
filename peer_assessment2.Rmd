@@ -1,0 +1,155 @@
+---
+output: 
+  html_document: 
+    keep_md: yes
+---
+Title:Impact of Severe Weather Events on Public Health and Economy in the United States
+
+• Introduction
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+---
+• Assignment
+
+The basic goal of this assignment is to explore the NOAA Storm Database and answer some basic questions about severe weather events. 
+
+```{r}
+setwd("/Users/lizard0827/Desktop/class/Reproducible research/")
+library(dplyr)
+library(ggplot2)
+library(R.utils) # for bunzip2
+library(gridExtra) # for advanced plots
+```
+Loading the data
+```{r}
+if(!file.exists("./stormData.csv.bz2")){
+  download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", destfile="stormData.csv.bz2", method="curl")
+bunzip2("./stormData.csv.bz2", overwrite=T, remove=F)
+}
+```
+
+```{r}
+Data<-read.csv("stormData.csv")
+head(Data, n=5)
+```
+
+Select data and explore data
+```{r}
+StormData<-select(Data, EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)
+head(StormData)
+str(StormData)
+unique(StormData$PROPDMGEXP)
+unique(StormData$CROPDMGEXP)
+```
+
+We need to setup a cross-reference table to convert the PROPDMGEXP and CROPDMGEXP values to numerical multipliers.
+We use the following conversion:
+## blanks: 1 (10^0)
+## + or - or ?: 0
+## H or h : 100 (hundred)
+## K or k: 1000 (thousand)
+## M or m: 1000000 (1e+06, million)
+## B or b: 1000000000 (1e+09, billion)
+```{r}
+StormData$PROPDMGEXP<- as.character(StormData$PROPDMGEXP)
+StormData$PROPDMGEXP[StormData$PROPDMGEXP ==""]<- 1
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="?"]<- 0
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="+"]<- 0
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="-"]<- 0
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="0"]<- 1
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="1"]<- 10
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="2"]<- 100
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="3"]<- 1000
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="4"]<- 10000
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="5"]<- 1e+05
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="6"]<- 1e+06
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="7"]<- 1e+07
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="8"]<- 1e+08
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="B"]<- 1e+09
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="h"]<- 100
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="H"]<- 100
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="K"]<- 1000
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="m"]<- 1e+06
+StormData$PROPDMGEXP[StormData$PROPDMGEXP =="M"]<- 1e+06
+```
+Compute the property damage value
+```{r}
+head(StormData)
+StormData$PROPDMGEXP<-as.numeric(StormData$PROPDMGEXP)
+StormData$PROPDMGVAL<-StormData$PROPDMG* StormData$PROPDMGEXP
+head(StormData)
+```
+Exploring the crop exponent data
+```{r}
+StormData$CROPDMGEXP<- as.character(StormData$CROPDMGEXP)
+StormData$CROPDMGEXP[StormData$CROPDMGEXP ==""]<- 1
+StormData$CROPDMGEXP[StormData$CROPDMGEXP =="?"]<- 0
+StormData$CROPDMGEXP[StormData$CROPDMGEXP =="0"]<- 1
+StormData$CROPDMGEXP[StormData$CROPDMGEXP =="2"]<- 100
+StormData$CROPDMGEXP[StormData$CROPDMGEXP =="B"]<- 1e+09
+StormData$CROPDMGEXP[StormData$CROPDMGEXP =="k"]<- 100
+StormData$CROPDMGEXP[StormData$CROPDMGEXP =="K"]<- 1000
+StormData$CROPDMGEXP[StormData$CROPDMGEXP =="m"]<- 1e+06
+StormData$CROPDMGEXP[StormData$CROPDMGEXP =="M"]<- 1e+06
+head(StormData)
+```
+
+Compute the property damage value
+```{r}
+StormData$CROPDMGEXP<-as.numeric(StormData$CROPDMGEXP)
+StormData$CROPDMGVAL<-StormData$CROPDMG* StormData$CROPDMGEXP
+head(StormData)
+```
+Plot top 10 event types by number of fatalities and by number of Injuries
+```{r}
+Fatal<-aggregate(x=list(FATALITIES=StormData$FATALITIES), by=list(EVTYPE =StormData$EVTYPE), FUN= sum)
+head(Fatal)
+Fatal<-arrange(Fatal, desc(FATALITIES))
+Fatal10<-Fatal[1:10, ]
+head(Fatal10)
+Fatalplot<- ggplot(Fatal10, aes(reorder(EVTYPE, -FATALITIES), FATALITIES))+ ggtitle("Fatalitites by Event Type")+
+  geom_bar(stat="identity", fill="green")+
+  xlab("Event Type")+
+  theme(axis.text.x = element_text(angle = 45, size=8, hjust = 1, vjust = 1))+
+  ylab("Total Fatalities")
+##plot our 
+head(StormData)
+Injuries<-aggregate(x=list(INJURIES=StormData$INJURIES), by=list(EVTYPE =StormData$EVTYPE), FUN= sum)
+head(Fatal)
+Injuries<-arrange(Injuries, desc(INJURIES))
+Injuries10<-Injuries[1:10, ]
+head(Injuries10)
+Injuriesplot<- ggplot(Injuries10, aes(reorder(EVTYPE, -INJURIES), INJURIES))+ ggtitle("Injuries by Event Type")+
+  geom_bar(stat="identity", fill="orange")+
+  xlab("Event Type")+
+  theme(axis.text.x = element_text(angle = 45, size=8, hjust = 1, vjust = 1))+
+  ylab("Total Fatalities")
+grid.arrange(Fatalplot, Injuriesplot, ncol = 2)
+```
+Plot our top 10 event types with the greatest econimic cost of property damage and of crop damage
+```{r}
+Propdmg<-aggregate(x=list(PROPDMGVAL=StormData$PROPDMGVAL), by=list(EVTYPE =StormData$EVTYPE), FUN= sum)
+head(Propdmg)
+Propdmg<-arrange(Propdmg, desc(PROPDMGVAL))
+Propdmg10<-Propdmg[1:10, ]
+head(Propdmg10)
+Propdmgplot<- ggplot(Propdmg10, aes(reorder(EVTYPE, -PROPDMGVAL), PROPDMGVAL))+ ggtitle("Top property damage by Event Type")+
+  geom_bar(stat="identity", fill="red")+
+  xlab("Event Type")+
+  theme(axis.text.x = element_text(angle = 45, size=8, hjust = 1, vjust = 1))+
+  ylab("Total cost")
+Cropdmg<-aggregate(x=list(CROPDMGVAL=StormData$CROPDMGVAL), by=list(EVTYPE =StormData$EVTYPE), FUN= sum)
+head(Cropdmg)
+Cropdmg<-arrange(Cropdmg, desc(CROPDMGVAL))
+Cropdmg10<-Cropdmg[1:10, ]
+head(Cropdmg10)
+Cropdmgplot<- ggplot(Cropdmg10, aes(reorder(EVTYPE, -CROPDMGVAL), CROPDMGVAL))+ ggtitle("Top Crop damage by Event Type")+
+  geom_bar(stat="identity", fill="blue")+
+  xlab("Event Type")+
+  theme(axis.text.x = element_text(angle = 45, size=8, hjust = 1, vjust = 1))+
+  ylab("Total cost")
+grid.arrange(Propdmgplot, Cropdmgplot, ncol = 2)
+```
+
